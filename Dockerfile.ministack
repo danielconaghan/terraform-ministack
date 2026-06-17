@@ -1,0 +1,55 @@
+FROM ministackorg/ministack:latest
+
+# Patch 1: honour LAMBDA_DOCKER_PLATFORM env var.
+# Without this, Lambda containers inherit the host platform (arm64 on Apple
+# Silicon), which breaks x86_64 Bref PHP binaries.
+RUN python3 - <<'EOF'
+import sys
+
+path = "/opt/ministack/ministack/services/lambda_svc.py"
+with open(path) as f:
+    src = f.read()
+
+needle = "    # Pull the image on first use (both Zip RIE images and user Image types)"
+patch = (
+    "    # Honour LAMBDA_DOCKER_PLATFORM (e.g. linux/amd64 on Apple Silicon)\n"
+    "    _lambda_platform = os.environ.get(\"LAMBDA_DOCKER_PLATFORM\", \"\")\n"
+    "    if _lambda_platform:\n"
+    "        run_kwargs[\"platform\"] = _lambda_platform\n"
+    "\n"
+)
+
+if needle not in src:
+    print("ERROR: patch 1 target not found — ministack source changed", file=sys.stderr)
+    sys.exit(1)
+
+with open(path, "w") as f:
+    f.write(src.replace(needle, patch + needle, 1))
+
+print("Patch 1 applied")
+EOF
+
+# Patch 2: pass the actual handler as Docker CMD for provided runtimes.
+# The official Lambda RIE entrypoint (/lambda-entrypoint.sh) sets _HANDLER="$1"
+# from the Docker CMD arg — so CMD must be the handler name (e.g. index.php),
+# not the literal string "bootstrap". The bootstrap path is always hardcoded to
+# /var/runtime/bootstrap inside the entrypoint, so changing CMD is safe.
+RUN python3 - <<'EOF'
+import sys
+
+path = "/opt/ministack/ministack/services/lambda_svc.py"
+with open(path) as f:
+    src = f.read()
+
+needle = '        # Zip: RIE expects handler as CMD (or "bootstrap" for provided)\n        run_kwargs["command"] = ["bootstrap"] if is_provided else [handler]'
+patch  = '        # Zip: RIE expects handler as CMD. For provided runtimes the entrypoint\n        # sets _HANDLER from $1 (the CMD arg), so pass the real handler here.\n        # The bootstrap path is hardcoded to /var/runtime/bootstrap in the\n        # entrypoint and is unaffected by CMD.\n        run_kwargs["command"] = [handler]'
+
+if needle not in src:
+    print("ERROR: patch 2 target not found — ministack source changed", file=sys.stderr)
+    sys.exit(1)
+
+with open(path, "w") as f:
+    f.write(src.replace(needle, patch, 1))
+
+print("Patch 2 applied")
+EOF

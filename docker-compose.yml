@@ -1,0 +1,31 @@
+services:
+  ministack:
+    build:
+      context: .
+      dockerfile: Dockerfile.ministack
+    ports:
+      - "4566:4566"
+    environment:
+      LAMBDA_EXECUTOR: docker
+      DOCKER_NETWORK: ministack-net
+      LAMBDA_DOCKER_PLATFORM: linux/amd64
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - ministack-net
+
+  terraform:
+    image: hashicorp/terraform:latest
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    networks:
+      - ministack-net
+    depends_on:
+      - ministack
+    profiles:
+      - tools  # only starts when explicitly invoked, not on `docker compose up`
+
+networks:
+  ministack-net:
+    name: ministack-net

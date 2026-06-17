@@ -1,0 +1,12 @@
+{
+    "require": {
+        "bref/bref": "^3.0"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "platform": {
+            "php": "8.3"
+        }
+    }
+}
